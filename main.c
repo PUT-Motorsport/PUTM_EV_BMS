@@ -1,4 +1,4 @@
-//#include <avr/io.h>
+#include <avr/io.h>
 #define F_CPU 16000000
 #define SPI_CS_PIN 8
 
@@ -243,12 +243,10 @@ int main(void){
 	SPI_MasterInit();
 	init_PEC15_Table();
 	//DDRB = 0b10111111;
-	//Serial.begin(115200);
 
 	// put your main code here, to run repeatedly:
 	while(1){
 		
-		//Serial.print("tak tak");
 		//PORTB ^= 0b10111111;
 		PORTB ^= 1 << DDB5;
 		d_ms(500);
@@ -258,18 +256,9 @@ int main(void){
 		ltc_start_cell_adc();
 		d_ms(2000);
 		
-		//Serial.print("tak tak1111111");
 		ltc_get_adc_values();
-		//Serial.print("tak tak");
-		temperature_calculate(cell_values[0]);
 	}
-	//ltc_start_cell_adc();
-	//delay(2000);
-	//ltc_get_adc_values();
-	//Serial.print("tak tak");
-	//Serial.print(temperature_calculate(cell_values[0]));
-	//Serial.print(temperature_calculate(cell_values[1]));
-	//Serial.print(temperature_calculate(cell_values[2]));
+
 	
 
 }
