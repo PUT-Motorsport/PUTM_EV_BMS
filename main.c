@@ -42,6 +42,9 @@ float temperature_map[29][2] = {
 uint8_t ltc_config[6] = {0xFC, (1874 & 0xff), (1874>>4)|(2625<<4), (2625>>4), 0, 0};
 uint16_t cell_values[10];
 
+uint16_t temp_values[5];
+float temp_values_float[5];
+
 void d_ms(int n) {
 	while(n--) {
 		_delay_ms(1);
@@ -221,6 +224,81 @@ void ltc_get_adc_values()
 	cell_values[1] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
 	cell_values[2] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8);
 }
+
+void ltc_start_temp_adc()
+{
+	uint8_t tab[12];
+	uint16_t pec;
+	// configuration
+	tab[0] = 0x00;
+	tab[1] = 0x01;
+	pec = pec15((char*)tab, 2);
+	tab[2] = pec >> 8;
+	tab[3] = pec;
+	//
+	tab[4] = 0xFC | 0b000; //ltc_config[0];
+	tab[5] = ltc_config[1];
+	tab[6] = ltc_config[2];
+	tab[7] = ltc_config[3];
+	tab[8] = ltc_config[4];
+	tab[9] = ltc_config[5];
+	pec = pec15((char*)&tab[4], 6);
+	tab[10] = pec >> 8;
+	tab[11] = pec;
+
+	ltc_wakeup();
+
+	//digitalWrite(SPI_CS_PIN, RESET);
+	PORTB^=1<<DDB0;
+	SPI_TransmitArray(tab, 12, 100);
+	//digitalWrite(SPI_CS_PIN, SET);
+	PORTB^=1<<DDB0;
+
+	// adc conversion
+	memset(tab, 0, 12);
+
+	uint16_t cmd = 0b10001100000 | (0b00 << 7);
+	tab[0] = cmd>>8;
+	tab[1] = cmd;
+	pec = pec15((char*)tab, 2);
+	tab[2] = pec >> 8;
+	tab[3] = pec;
+
+	//ltc_wakeup();
+
+	//digitalWrite(SPI_CS_PIN, RESET);
+	PORTB^=1<<DDB0;
+	SPI_TransmitArray(tab, 12, 100);
+	//digitalWrite(SPI_CS_PIN, SET);
+	PORTB^=1<<DDB0;
+}
+
+void ltc_get_temp_values()
+{
+	uint8_t tab[100], rx_tab[100];
+	uint16_t pec;
+
+	// read gpio voltage group A
+	memset(tab, 0, 12);
+	tab[0] = 0;
+	tab[1] = 0b1100;
+	pec = pec15((char*)tab, 2);
+	tab[2] = pec >> 8;
+	tab[3] = pec;
+
+	ltc_wakeup();
+
+	//digitalWrite(SPI_CS_PIN, RESET);
+	PORTB^=1<<DDB0;
+	SPI_TransmitRead(tab,12,rx_tab,12,100);
+	PORTB^=1<<DDB0;
+	//digitalWrite(SPI_CS_PIN, SET);
+
+	temp_values[0] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8);
+	temp_values[1] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
+	temp_values[2] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8);
+}
+
 float temperature_calculate(uint16_t ltc_value)
 {
 	float retval = 0.0;
@@ -254,9 +332,14 @@ int main(void){
 
 		//_delay_ms(500);
 		ltc_start_cell_adc();
-		d_ms(2000);
+		d_ms(200);
 		
 		ltc_get_adc_values();
+
+		ltc_start_temp_adc();
+		
+		d_ms(200);
+		ltc_get_temp_values();
 	}
 
 	
