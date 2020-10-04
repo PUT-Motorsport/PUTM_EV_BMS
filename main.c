@@ -1,8 +1,7 @@
 /*
  * bms_1.c
  *
- * Created: 09/25/2020 20:46:55
- * Author : Maks
+ * Author : Maksymilian Jaruga
  */ 
 
 #include <avr/io.h>
@@ -13,10 +12,45 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-//	stan licznika timera
+//	timers
 volatile uint64_t timer_counter = 0;
+volatile uint64_t timer_counter_2 = 0;
 
 /*
+float temperature_map_2[29][2] = {
+	//		ltc value ,  temperature *C
+	27190	,	-20	,
+	26380	,	-15	,
+	25400	,	-10	,
+	24260	,	-5	,
+	22960	,	0	,
+	21520	,	5	,
+	19960	,	10	,
+	18330	,	15	,
+	16660	,	20	,
+	15000	,	25	,
+	13380	,	30	,
+	11850	,	35	,
+	10420	,	40	,
+	9120	,	45	,
+	7940	,	50	,
+	6890	,	55	,
+	5970	,	60	,
+	5170	,	65	,
+	4470	,	70	,
+	3860	,	75	,
+	3350	,	80	,
+	2900	,	85	,
+	2520	,	90	,
+	2190	,	95	,
+	1910	,	100	,
+	1660	,	105	,
+	1450	,	110	,
+	1270	,	115
+
+};
+*/
+
 float temperature_map[29][2] = {
 	//    ltc value ,  temperature *C
 	48656 , -20 ,
@@ -47,23 +81,45 @@ float temperature_map[29][2] = {
 	2894  , 105 ,
 	2528  , 110 ,
 	2214  , 115
-};*/
+};
 
 uint8_t ltc_config[6] = {0xFC, (1874 & 0xff), (1874>>4)|(2625<<4), (2625>>4), 0, 0};
 uint16_t cell_values[10];
 uint16_t temp_values[10];
+uint16_t temp_values_2[10];
+uint16_t reference2_value;
+uint16_t reference2_value_2;
+float temp_values_float[10];
+float temp_values_2_float[10];
 
 ISR(TIMER0_COMP_vect)
 {
 	TCNT0 = 0;
-	//timer_counter++;
 	
-		
+	if(((float)cell_values[0]<3.5 || (float)cell_values[0]>4.23) || ((float)cell_values[1]<3.5 || (float)cell_values[1]>4.23) || ((float)cell_values[3]<3.5 || (float)cell_values[3]>4.23) || ((float)cell_values[4]<3.5 || (float)cell_values[4]>4.23)){
+		timer_counter++;
+	}
 	
+	if(((float)cell_values[0]>3.5 && (float)cell_values[0]<4.23) && ((float)cell_values[1]>3.5 && (float)cell_values[1]<4.23) && ((float)cell_values[3]>3.5 && (float)cell_values[3]<4.23) && ((float)cell_values[4]>3.5 && (float)cell_values[4]<4.23)){
+		timer_counter = 0;
+	}
 	
-	//if(timer_counter >= DRS_MAX_TYPE_CHANGE_TICKS){
-	//	DRS_type_change_possible = 0;
-	//}
+	if(temp_values_float[1]>50 || temp_values_float[2]>50 || temp_values_float[3]>50 || temp_values_float[4]>50){
+	timer_counter_2++;
+	}
+	
+	if(temp_values_float[1]<50 && temp_values_float[2]<50 && temp_values_float[3]<50 && temp_values_float[4]<50){
+		timer_counter_2 = 0;
+	}
+	
+	if(timer_counter >= 1000){
+		PORTE ^= 1 << DDE2;
+	}
+	
+	if(timer_counter_2 >= 1000){
+		PORTE ^= 1 << DDE2;
+	}
+	
 }
 
 void TickTimerInit(){
@@ -145,32 +201,22 @@ int8_t SPI_Read(int8_t  data) //!The data byte to be written
 
 void SPI_TransmitArray(uint8_t data[],  //Array of bytes to be written on the SPI port
 uint8_t len                          // Option: Number of bytes to be written on the SPI port
-//int transmitDelay
 )
 {
   for (uint8_t i = 0; i < len; i++)
   {
     SPI_Transmit((int8_t)data[i]);
-    //d_ms(transmitDelay);
   }
 }
+
 void SPI_TransmitRead(uint8_t *tx_Data,//array of data to be written on SPI port
-uint8_t tx_len, //length of the tx data array
+uint8_t tx_len, //length of the tx and rx data array
 uint8_t *rx_data//Input: array that will store the data read by the SPI port
-//uint8_t rx_len, //Option: number of bytes to be read from the SPI port
-//int transmitDelay
 )
 {
-  /*for (uint8_t i = 0; i < tx_len; i++)
-  {
-    SPI_Transmit(tx_Data[i]);
-    d_ms(transmitDelay);
-  }*/
-
   for (uint8_t i = 0; i < tx_len; i++)
   {
     rx_data[i] = (uint8_t)SPI_Read(tx_Data[i]);
-    //d_ms(transmitDelay);
   }
 
 }
@@ -179,11 +225,9 @@ void ltc_wakeup()
 {
 	uint8_t tab[2] = {0xFF};
 
-	//digitalWrite(SPI_CS_PIN, RESET);
-	PORTB^=1<<DDB0;
+	PORTB ^= 1<<DDB0;
 	SPI_TransmitArray(tab, 2);
-	PORTB|=1<<DDB0;
-	//digitalWrite(SPI_CS_PIN, SET);
+	PORTB |= 1<<DDB0;
 	
 }
 
@@ -198,8 +242,8 @@ void ltc_start_cell_adc()
 	pec = pec15((char*)tab, 2);
 	tab[2] = pec >> 8;
 	tab[3] = pec;
-	//
-	tab[4] = ltc_config[0];//0xFC | 0b000; 
+	
+	tab[4] = ltc_config[0];
 	tab[5] = ltc_config[1];
 	tab[6] = ltc_config[2];
 	tab[7] = ltc_config[3];
@@ -211,11 +255,9 @@ void ltc_start_cell_adc()
 
 	ltc_wakeup();
 
-	//digitalWrite(SPI_CS_PIN, RESET);
-	PORTB^=1<<DDB0;
+	PORTB ^= 1<<DDB0;
 	SPI_TransmitArray(tab, 12);
-	//digitalWrite(SPI_CS_PIN, SET);
-	PORTB|=1<<DDB0;
+	PORTB |= 1<<DDB0;
 
 	// adc conversion
 	memset(tab, 0, 12);
@@ -229,11 +271,9 @@ void ltc_start_cell_adc()
 
 	//ltc_wakeup();
 
-	//digitalWrite(SPI_CS_PIN, RESET);
-	PORTB^=1<<DDB0;
+	PORTB ^= 1<<DDB0;
 	SPI_TransmitArray(tab, 4);
-	PORTB|=1<<DDB0;
-	//digitalWrite(SPI_CS_PIN, SET);
+	PORTB |= 1<<DDB0;
 
 }
 
@@ -252,18 +292,16 @@ void ltc_get_adc_values()
 
 	ltc_wakeup();
 
-	//digitalWrite(SPI_CS_PIN, RESET);
-	PORTB^=1<<DDB0;
+	PORTB ^= 1<<DDB0;
 	SPI_TransmitRead(tab,12,rx_tab);
-	PORTB|=1<<DDB0;
-	//digitalWrite(SPI_CS_PIN, SET);
+	PORTB |= 1<<DDB0;
 
 	cell_values[0] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8);
 	cell_values[1] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
 	cell_values[2] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8); //zwarty
 	
 	// read cell voltage group B
-	/*cmd = (1<<15) | 0b110;
+	cmd = (1<<15) | 0b110;
 	memset(tab, 0, 12);
 	tab[0] = (cmd>>8);
 	tab[1] = cmd;
@@ -273,14 +311,29 @@ void ltc_get_adc_values()
 
 	//ltc_wakeup();
 
-	PORTB^=1<<DDB0;
+	PORTB ^= 1<<DDB0;
 	SPI_TransmitRead(tab,12,rx_tab);
-	PORTB^=1<<DDB0;
+	PORTB ^= 1<<DDB0;
 
-	cell_values[3] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8); //zwarty ?
+	cell_values[3] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8);
 	cell_values[4] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
-	cell_values[5] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8);
-*/
+	cell_values[5] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8); //zwarty
+
+}
+
+float temperature_calculate(uint16_t ltc_value)
+{
+	float retval = 0.0;
+	for(int i = 1; i < 28; i++)
+	{
+		if(ltc_value >= (uint16_t)temperature_map[i][0])
+		{
+			// approximation
+			retval = temperature_map[i][1] - 5.0 * ((float)ltc_value-temperature_map[i][0])/(temperature_map[i-1][0] - temperature_map[i][0]);
+			break;
+		}
+	}
+	return retval;
 }
 
 void ltc_start_temp_adc()
@@ -294,8 +347,8 @@ void ltc_start_temp_adc()
 	pec = pec15((char*)tab, 2);
 	tab[2] = pec >> 8;
 	tab[3] = pec;
-	//
-	tab[4] = ltc_config[0]; //0xFC | 0b000;
+	
+	tab[4] = ltc_config[0];
 	tab[5] = ltc_config[1];
 	tab[6] = ltc_config[2];
 	tab[7] = ltc_config[3];
@@ -307,11 +360,9 @@ void ltc_start_temp_adc()
 
 	ltc_wakeup();
 
-	//digitalWrite(SPI_CS_PIN, RESET);
-	PORTB^=1<<DDB0;
+	PORTB ^= 1<<DDB0;
 	SPI_TransmitArray(tab, 12);
-	PORTB|=1<<DDB0;
-	//digitalWrite(SPI_CS_PIN, SET);
+	PORTB |= 1<<DDB0;
 
 	// adc conversion
 	memset(tab, 0, 12);
@@ -325,55 +376,72 @@ void ltc_start_temp_adc()
 
 	//ltc_wakeup();
 
-	PORTB^=1<<DDB0;
+	PORTB ^= 1<<DDB0;
 	SPI_TransmitArray(tab, 12);
-	PORTB|=1<<DDB0;
+	PORTB |= 1<<DDB0;
 }
+
 
 void ltc_get_temp_values()
 {
 	uint8_t tab[100], rx_tab[100];
 	uint16_t pec;
-	uint16_t cmd = (1<<15) | 0b1100;
 
 	// read gpio voltage group A
+	uint16_t cmd = (1<<15) | 0b1100;
 	memset(tab, 0, 12);
 	tab[0] = (cmd>>8);
 	tab[1] = cmd;
+	//tab[0] = 0;
+	//tab[1] = 0b1100;
 	pec = pec15((char*)tab, 2);
 	tab[2] = pec >> 8;
 	tab[3] = pec;
 
 	ltc_wakeup();
-
-	PORTB^=1<<DDB0;
-	SPI_TransmitRead(tab,12,rx_tab);
-	PORTB|=1<<DDB0;
+	
+	PORTB ^= 1<<DDB0;
+	SPI_TransmitRead(tab,20,rx_tab);
+	PORTB |= 1<<DDB0;
 
 	temp_values[0] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8);
 	temp_values[1] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
 	temp_values[2] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8);
-	
-	// read gpio voltage group B
+
+	/*temp_values_2[0] = (uint16_t)rx_tab[12] | (((uint16_t)rx_tab[13])<<8);
+	temp_values_2[1] = (uint16_t)rx_tab[14] | (((uint16_t)rx_tab[15])<<8);
+	temp_values_2[2] = (uint16_t)rx_tab[16] | (((uint16_t)rx_tab[17])<<8);*/
+
+	// read cell voltage group B
 	cmd = (1<<15) | 0b1110;
 	memset(tab, 0, 12);
 	tab[0] = (cmd>>8);
 	tab[1] = cmd;
+	//tab[0] = 0;
+	//tab[1] = 0b1110;
 	pec = pec15((char*)tab, 2);
 	tab[2] = pec >> 8;
 	tab[3] = pec;
 
-	ltc_wakeup();
+	//ltc_wakeup();
 
-	PORTB^=1<<DDB0;
-	SPI_TransmitRead(tab,12,rx_tab);
-	PORTB|=1<<DDB0;
+	PORTB ^= 1<<DDB0;
+	SPI_TransmitRead(tab,20,rx_tab);
+	PORTB |= 1<<DDB0;
 
-	temp_values[0] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8);
-	temp_values[1] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
-	temp_values[2] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8);
+	temp_values[3] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8);
+	temp_values[4] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
+	reference2_value = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8);
+
+	/*temp_values_2[3] = (uint16_t)rx_tab[12] | (((uint16_t)rx_tab[13])<<8);
+	temp_values_2[4] = (uint16_t)rx_tab[14] | (((uint16_t)rx_tab[15])<<8);
+	reference2_value_2 = (uint16_t)rx_tab[16] | (((uint16_t)rx_tab[17])<<8);*/
 	
-	
+	for(int i = 0; i < 5; i++)
+	{
+		temp_values_float[i] = temperature_calculate(temp_values[i]);
+		temp_values_2_float[i] = temperature_calculate(temp_values_2[i]);
+	}
 }
 
 int main(void)
@@ -403,7 +471,6 @@ int main(void)
 		PORTB |= 1 << DDB6;
 	}*/
 	
-    /* Replace with your application code */
     while (1) 
     {
 		PORTB ^= 1 << DDB5;
@@ -423,6 +490,15 @@ int main(void)
 			ltc_start_cell_adc();
 			d_ms(20);
 			ltc_get_adc_values();
+			
+			ltc_start_temp_adc();
+			d_ms(20);
+			ltc_get_temp_values();
+			
+			
+			if(temp_values_float[4]>30){
+			PORTB ^= 1 << DDB6;
+			}
     }
 }
 
