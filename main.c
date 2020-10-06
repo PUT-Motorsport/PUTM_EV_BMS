@@ -95,29 +95,31 @@ float temp_values_2_float[10];
 ISR(TIMER0_COMP_vect)
 {
 	TCNT0 = 0;
+	//timer_counter++;
 	
-	if(((float)cell_values[0]<3.5 || (float)cell_values[0]>4.23) || ((float)cell_values[1]<3.5 || (float)cell_values[1]>4.23) || ((float)cell_values[3]<3.5 || (float)cell_values[3]>4.23) || ((float)cell_values[4]<3.5 || (float)cell_values[4]>4.23)){
+	
+	if((cell_values[0]<35000 || cell_values[0]>42300) || (cell_values[1]<35000 || cell_values[1]>42300) || (cell_values[3]<35000 || cell_values[3]>42300) || (cell_values[4]<35000 || cell_values[4]>42300)){
 		timer_counter++;
 	}
 	
-	if(((float)cell_values[0]>3.5 && (float)cell_values[0]<4.23) && ((float)cell_values[1]>3.5 && (float)cell_values[1]<4.23) && ((float)cell_values[3]>3.5 && (float)cell_values[3]<4.23) && ((float)cell_values[4]>3.5 && (float)cell_values[4]<4.23)){
+	if((cell_values[0]>=42000 && cell_values[0]<=42300) && (cell_values[1]>=35000 && cell_values[1]<=42300) && (cell_values[3]>=35000 && cell_values[3]<=42300) && (cell_values[4]>=35000 && cell_values[4]<=42300)){
 		timer_counter = 0;
 	}
 	
 	if(temp_values_float[1]>50 || temp_values_float[2]>50 || temp_values_float[3]>50 || temp_values_float[4]>50){
-	timer_counter_2++;
+		timer_counter_2=timer_counter_2+1;
 	}
 	
-	if(temp_values_float[1]<50 && temp_values_float[2]<50 && temp_values_float[3]<50 && temp_values_float[4]<50){
+	if(temp_values_float[1]<=50 && temp_values_float[2]<=50 && temp_values_float[3]<=50 && temp_values_float[4]<=50){
 		timer_counter_2 = 0;
 	}
 	
 	if(timer_counter >= 1000){
-		PORTE ^= 1 << DDE2;
+		PORTE &= 0 << DDE2;
 	}
 	
 	if(timer_counter_2 >= 1000){
-		PORTE ^= 1 << DDE2;
+		PORTE &= 0 << DDE2;
 	}
 	
 }
@@ -388,12 +390,9 @@ void ltc_get_temp_values()
 	uint16_t pec;
 
 	// read gpio voltage group A
-	uint16_t cmd = (1<<15) | 0b1100;
 	memset(tab, 0, 12);
-	tab[0] = (cmd>>8);
-	tab[1] = cmd;
-	//tab[0] = 0;
-	//tab[1] = 0b1100;
+	tab[0] = 0;
+	tab[1] = 0b1100;
 	pec = pec15((char*)tab, 2);
 	tab[2] = pec >> 8;
 	tab[3] = pec;
@@ -413,12 +412,9 @@ void ltc_get_temp_values()
 	temp_values_2[2] = (uint16_t)rx_tab[16] | (((uint16_t)rx_tab[17])<<8);*/
 
 	// read cell voltage group B
-	cmd = (1<<15) | 0b1110;
 	memset(tab, 0, 12);
-	tab[0] = (cmd>>8);
-	tab[1] = cmd;
-	//tab[0] = 0;
-	//tab[1] = 0b1110;
+	tab[0] = 0;
+	tab[1] = 0b1110;
 	pec = pec15((char*)tab, 2);
 	tab[2] = pec >> 8;
 	tab[3] = pec;
@@ -446,9 +442,12 @@ void ltc_get_temp_values()
 
 int main(void)
 {
+	//PORTE |= 1 << DDE2;
 	init_PEC15_Table();
 	SPI_MasterInit();
 	TickTimerInit();
+	sei();
+	PORTE |= 1 << DDE2;
 	/*
 	uint8_t tab[12];
 	uint8_t tab_r[12];
