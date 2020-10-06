@@ -6,15 +6,19 @@
 
 #include <avr/io.h>
 #include <string.h>
+#include "./can.h"
 
 #define F_CPU 16000000UL
 
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
+const can_filter_t filtersetup = {0,0,{0}};
+
 //	timers
 volatile uint64_t timer_counter = 0;
 volatile uint64_t timer_counter_2 = 0;
+volatile uint64_t timer_counter_3 = 0;
 
 /*
 float temperature_map_2[29][2] = {
@@ -84,11 +88,18 @@ float temperature_map[29][2] = {
 };
 
 uint8_t ltc_config[6] = {0xFC, (1874 & 0xff), (1874>>4)|(2625<<4), (2625>>4), 0, 0};
-uint16_t cell_values[10];
-uint16_t temp_values[10];
-uint16_t temp_values_2[10];
-uint16_t reference2_value;
-uint16_t reference2_value_2;
+uint8_t acu_state[8]={0,0,0,0,0,0,0,0};
+uint8_t cell_values[10];
+uint8_t cell_values_sum;
+uint8_t cell_values_low;
+uint8_t cell_values_high;
+uint8_t temp_values[10];
+uint8_t temp_values_2[10];
+uint8_t temp_values_avr;
+uint8_t temp_values_high;
+uint8_t reference2_value;
+uint8_t reference2_value_2;
+uint8_t can_flag=0;
 float temp_values_float[10];
 float temp_values_2_float[10];
 
@@ -99,18 +110,69 @@ ISR(TIMER0_COMP_vect)
 	
 	
 	if((cell_values[0]<35000 || cell_values[0]>42300) || (cell_values[1]<35000 || cell_values[1]>42300) || (cell_values[3]<35000 || cell_values[3]>42300) || (cell_values[4]<35000 || cell_values[4]>42300)){
+		acu_state|=0b1;
+		if((cell_values[0]<35000 || cell_values[0]>42300)){
+			if(cell_values[0]<35000){
+				acu_state|=0b1000;
+			}else{
+				acu_state|=0b10000;
+			}
+		}
+		if((cell_values[1]<35000 || cell_values[1]>42300)){
+			acu_state|=0b10;
+			if(cell_values[1]<35000){
+				acu_state|=0b1000;
+				}else{
+				acu_state|=0b10000;
+			}
+		}
+		if((cell_values[2]<35000 || cell_values[2]>42300)){
+			acu_state|=0b100;
+			if(cell_values[2]<35000){
+				acu_state|=0b1000;
+				}else{
+				acu_state|=0b10000;
+			}
+		}
+		if((cell_values[3]<35000 || cell_values[3]>42300)){
+			acu_state|=0b110;
+			if(cell_values[3]<35000){
+				acu_state|=0b1000;
+				}else{
+				acu_state|=0b10000;
+			}
+		}
+		
 		timer_counter++;
 	}
 	
 	if((cell_values[0]>=42000 && cell_values[0]<=42300) && (cell_values[1]>=35000 && cell_values[1]<=42300) && (cell_values[3]>=35000 && cell_values[3]<=42300) && (cell_values[4]>=35000 && cell_values[4]<=42300)){
+		acu_state&=0b0;
 		timer_counter = 0;
 	}
 	
 	if(temp_values_float[1]>50 || temp_values_float[2]>50 || temp_values_float[3]>50 || temp_values_float[4]>50){
+		acu_state|=0b1;
+		if(temp_values_float[1]>50){
+			acu_state|=0b100000;
+		}
+		if(temp_values_float[2]>50){
+			acu_state|=0b10;
+			acu_state|=0b100000;
+		}
+		if(temp_values_float[3]>50){
+			acu_state|=0b100;
+			acu_state|=0b100000;
+		}
+		if(temp_values_float[4]>50){
+			acu_state|=0b110;
+			acu_state|=0b100000;
+		}
 		timer_counter_2=timer_counter_2+1;
 	}
 	
 	if(temp_values_float[1]<=50 && temp_values_float[2]<=50 && temp_values_float[3]<=50 && temp_values_float[4]<=50){
+		acu_state&=0b0;
 		timer_counter_2 = 0;
 	}
 	
@@ -124,7 +186,27 @@ ISR(TIMER0_COMP_vect)
 	
 }
 
+ISR(TIMER0_COMP_vect)
+{
+	timer_counter_3++;
+	if((timer_counter_3%20)==0){
+		can_flag=1;
+	}
+}
+
 void TickTimerInit(){
+	// fcpu 16 MHz
+	// preskaler 64
+	// comp 249
+	// 16 000 000 / (64 * (249+1)) = 16000 ---> 1ms
+	TCCR0A = 1<<CS1 | 1 << CS0;
+	TCNT0 = 0;
+	OCR0A = 249;
+	TIFR0 = 0b11; // clearing interrupt flags
+	TIMSK0 = 1<<OCIE0A;
+}
+
+void TickTimerInit_2(){
 	// fcpu 16 MHz
 	// preskaler 64
 	// comp 249
@@ -320,7 +402,24 @@ void ltc_get_adc_values()
 	cell_values[3] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8);
 	cell_values[4] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
 	cell_values[5] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8); //zwarty
-
+	cell_values_sum = cell_values[0];
+	cell_values_low = cell_values[0];
+	cell_values_high = cell_values[0];
+	
+	for(int i = 1; i < 5; i++)
+	{
+		if(i!=2){
+			cell_values_sum = cell_values_sum+cell_values[i];
+			if(cell_values_low > cell_values[i]){
+				cell_values_low = cell_values[i];
+			}
+			if(cell_values_high < cell_values[i]){
+				cell_values_high = cell_values[i];
+			}
+		}
+	}
+	
+	
 }
 
 float temperature_calculate(uint16_t ltc_value)
@@ -428,15 +527,27 @@ void ltc_get_temp_values()
 	temp_values[3] = (uint16_t)rx_tab[4] | (((uint16_t)rx_tab[5])<<8);
 	temp_values[4] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
 	reference2_value = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8);
+	
+	temp_values_avr = 0;
 
 	/*temp_values_2[3] = (uint16_t)rx_tab[12] | (((uint16_t)rx_tab[13])<<8);
 	temp_values_2[4] = (uint16_t)rx_tab[14] | (((uint16_t)rx_tab[15])<<8);
 	reference2_value_2 = (uint16_t)rx_tab[16] | (((uint16_t)rx_tab[17])<<8);*/
 	
-	for(int i = 0; i < 5; i++)
+	for(int i = 1; i < 5; i++)
 	{
 		temp_values_float[i] = temperature_calculate(temp_values[i]);
 		temp_values_2_float[i] = temperature_calculate(temp_values_2[i]);
+		
+		temp_values_avr = temp_values_avr + temp_values_float[i];
+	}
+	temp_values_avr = temp_values_avr/4;
+	
+	temp_values_high=temp_values_float[1];
+	for(int i = 2; i < 5; i++){
+		if(temp_values_high < temp_values_float[i]){
+			temp_values_high = temp_values_float[i];
+		}
 	}
 }
 
@@ -446,7 +557,12 @@ int main(void)
 	init_PEC15_Table();
 	SPI_MasterInit();
 	TickTimerInit();
+	TickTimerInit_2();
 	sei();
+	
+	can_init(BITRATE_500_KBPS);
+	can_set_filter(1, &filtersetup);
+	
 	PORTE |= 1 << DDE2;
 	/*
 	uint8_t tab[12];
