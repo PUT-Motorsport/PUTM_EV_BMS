@@ -53,7 +53,7 @@ float temperatureMap[29][2] = {
 };
 
 uint8_t ltcConfig[6] = {0xFC, (1874 & 0xff), (1874>>4)|(2625<<4), (2625>>4), 0, 0};
-uint8_t acuState[8]={0,0,0,0,0,0,0,0};
+uint8_t acuState=0;
 uint16_t cellValues[10];
 uint16_t cellValuesSum;
 uint16_t cellValuesLow;
@@ -114,8 +114,7 @@ ISR(TIMER0_COMP_vect)
 		timerCounter++;
 	}
 	
-	if((cellValues[0] >= 42000 && cellValues[0] <= 42300) && (cellValues[1] >= 35000 && cellValues[1] <= 42300) && (cellValues[3] >= 35000 && cellValues[3] <= 42300) && (cellValues[4] >= 35000 && cellValues[4] <= 42300)){
-		acuState &= 0b0;
+	if((cellValues[0] >= 35000 && cellValues[0] <= 42300) && (cellValues[1] >= 35000 && cellValues[1] <= 42300) && (cellValues[3] >= 35000 && cellValues[3] <= 42300) && (cellValues[4] >= 35000 && cellValues[4] <= 42300)){
 		timerCounter = 0;
 	}
 	
@@ -140,16 +139,20 @@ ISR(TIMER0_COMP_vect)
 	}
 	
 	if(tempValuesFloat[1] <= 50 && tempValuesFloat[2] <= 50 && tempValuesFloat[3] <= 50 && tempValuesFloat[4] <= 50){
-		acuState &= 0b0;
 		timerCounter_2 = 0;
 	}
 	
-	if(timerCounter >= 1000){
-		PORTE &= 0 << DDE2;
+	if((tempValuesFloat[1] <= 40 && tempValuesFloat[2] <= 40 && tempValuesFloat[3] <= 40 && tempValuesFloat[4] <= 40) && ((cellValues[0] >= 36000 && cellValues[0] <= 41300) && (cellValues[1] >= 36000 && cellValues[1] <= 41300) && (cellValues[3] >= 36000 && cellValues[3] <= 41300) && (cellValues[4] >= 36000 && cellValues[4] <= 41300))){
+		acuState = 0;
+		PORTE |= 1 << DDE2;
 	}
 	
-	if(timerCounter_2 >= 1000){
-		PORTE &= 0 << DDE2;
+	if(timerCounter >= 500){
+		PORTE = 0 << DDE2;
+	}
+	
+	if(timerCounter_2 >= 500){
+		PORTE = 0 << DDE2;
 	}
 	
 }
@@ -211,11 +214,11 @@ uint16_t pec15(char *data , int len)
 void SPI_MasterInit(void)
 {
   /* Set MOSI and SCK output, all others input */
-  DDRB = (1<<DDB2)|(1<<DDB1)|(1<<DDB5)|(1<<DDB0)|(1<<DDB6);
+  DDRB = (1<<DDB2) | (1<<DDB1) | (1<<DDB5) | (1<<DDB0) | (1<<DDB6);
   DDRE = (1<<DDE2);
   /* Enable SPI, Master, set clock rate fck/16 */
   SPSR = (0<<SPI2X);
-  SPCR = (1<<SPE)|(0<<DORD)|(1<<MSTR)|(1<<CPOL)|(1<<CPHA)|(0<<SPR1)|(1<<SPR0);
+  SPCR = (1<<SPE) | (0<<DORD) | (1<<MSTR) | (1<<CPOL) | (1<<CPHA) | (0<<SPR1) | (1<<SPR0);
 }
 
 void SPI_Transmit(int8_t  data)  // Byte to be written to SPI port
@@ -352,7 +355,7 @@ void LTC_GetValuesADC()
 	cellValues[4] = (uint16_t)rx_tab[6] | (((uint16_t)rx_tab[7])<<8);
 	cellValues[5] = (uint16_t)rx_tab[8] | (((uint16_t)rx_tab[9])<<8); //short circuit
 	
-	cellValuesSum  = cellValues[0];
+	cellValuesSum  = cellValues[0] / 1000;
 	cellValuesLow  = cellValues[0];
 	cellValuesHigh = cellValues[0];
 	
@@ -360,7 +363,7 @@ void LTC_GetValuesADC()
 	for(int i = 1; i < 5; i++)
 	{
 		if(i!=2){
-			cellValuesSum = cellValuesSum+cellValues[i];
+			cellValuesSum = cellValuesSum + cellValues[i] / 1000;
 			if(cellValuesLow > cellValues[i]){
 				cellValuesLow = cellValues[i];
 			}
@@ -369,9 +372,9 @@ void LTC_GetValuesADC()
 			}
 		}
 	}
-	cellValuesSum  = cellValuesSum/1000;
-	cellValuesHigh = cellValuesHigh/1000;
-	cellValuesLow  = cellValuesLow/1000;
+	cellValuesSum  = cellValuesSum;
+	cellValuesHigh = cellValuesHigh / 1000;
+	cellValuesLow  = cellValuesLow  / 1000;
 	
 }
 
@@ -488,7 +491,7 @@ void LTC_GetTempValues()
 	}
 	tempValuesAvr = tempValuesAvr/4;
 	
-	tempValuesHigh=tempValuesFloat[1];
+	tempValuesHigh = tempValuesFloat[1];
 	for(int i = 2; i < 5; i++){
 		if(tempValuesHigh < tempValuesFloat[i]){
 			tempValuesHigh = tempValuesFloat[i];
@@ -498,7 +501,6 @@ void LTC_GetTempValues()
 
 int main(void)
 {
-	//PORTE |= 1 << DDE2;
 	init_PEC15_Table();
 	SPI_MasterInit();
 	TickTimerInit();
@@ -507,45 +509,8 @@ int main(void)
 	can_init(BITRATE_500_KBPS);
 	can_set_filter(1, &filtersetup);
 	
-	PORTE |= 1 << DDE2;
-	/*
-	uint8_t tab[12];
-	uint8_t tab_r[12];
-	uint16_t cmd=(1<<15)|(0b101100);
-	LTC_Wakeup();
-	
-	tab[0]=(cmd>>8);
-	tab[1]=cmd;
-	uint16_t pec=pec15(tab,2);
-	tab[2]=(pec>>8);
-	tab[3]=pec;
-	
-	PORTB^=1<<DDB0;
-	SPI_TransmitRead(tab, 12, tab_r);
-	PORTB|=1<<DDB0;
-	
-	uint64_t sid;
-	memcpy(&sid,&tab_r[4],6);
-	if(sid!=0x0){
-		PORTB |= 1 << DDB6;
-	}*/
-	
     while (1) 
     {
-		PORTB ^= 1 << DDB5;
-		d_ms(500);
-		
-			/*
-			PORTB^=1<<DDB0;
-			SPI_TransmitRead(tab, 12, tab_r);
-			PORTB|=1<<DDB0;
-			
-			uint64_t sid;
-			memcpy(&sid,&tab_r[4],6);
-			if(sid!=0xFFFFFFFFFFFF){
-				PORTB ^= 1 << DDB6;
-			}*/
-			
 			LTC_StartCellADC();
 			d_ms(20);
 			LTC_GetValuesADC();
@@ -560,7 +525,7 @@ int main(void)
 				
 				txMessage.id = 0x0B;
 				txMessage.flags.rtr = 0;
-				txMessage.length = 8;
+				txMessage.length = 6;
 				
 				txMessage.data[0] = cellValuesSum;
 				txMessage.data[1] = acuState;
@@ -570,11 +535,6 @@ int main(void)
 				txMessage.data[5] = cellValuesHigh;
 				
 				can_send_message(&txMessage);
-			}
-			
-			
-			if(tempValuesFloat[4] > 30){
-			PORTB ^= 1 << DDB6;
 			}
     }
 }
