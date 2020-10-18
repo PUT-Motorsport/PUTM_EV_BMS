@@ -78,77 +78,76 @@ ISR(TIMER0_COMP_vect)
 	
 	
 	if((cellValues[0] < 35000 || cellValues[0] > 42300) || (cellValues[1] < 35000 || cellValues[1] > 42300) || (cellValues[3] < 35000 || cellValues[3] > 42300) || (cellValues[4] < 35000 || cellValues[4] > 42300)){
-		acuState |= 0b1;
-		if((cellValues[0] < 35000 || cellValues[0] > 42300)){
-			if(cellValues[0] < 35000){
-				acuState |= 0b1000;
-			}else{
-				acuState |= 0b10000;
-			}
-		}
-		if((cellValues[1] < 35000 || cellValues[1] > 42300)){
-			acuState |= 0b10;
-			if(cellValues[1] < 35000){
-				acuState |= 0b1000;
-				}else{
-				acuState |= 0b10000;
-			}
-		}
-		if((cellValues[2] < 35000 || cellValues[2] > 42300)){
-			acuState |= 0b100;
-			if(cellValues[2] < 35000){
-				acuState |= 0b1000;
-				}else{
-				acuState |= 0b10000;
-			}
-		}
-		if((cellValues[3] < 35000 || cellValues[3] > 42300)){
-			acuState |= 0b110;
-			if(cellValues[3] < 35000){
-				acuState |= 0b1000;
-				}else{
-				acuState |= 0b10000;
-			}
-		}
-		
 		timerCounter++;
 	}
 	
 	if((cellValues[0] >= 35000 && cellValues[0] <= 42300) && (cellValues[1] >= 35000 && cellValues[1] <= 42300) && (cellValues[3] >= 35000 && cellValues[3] <= 42300) && (cellValues[4] >= 35000 && cellValues[4] <= 42300)){
+		acuState = 0;
 		timerCounter = 0;
 	}
 	
 	if(tempValuesFloat[1] > 50 || tempValuesFloat[2] > 50 || tempValuesFloat[3] > 50 || tempValuesFloat[4] > 50){
-		acuState |= 0b1;
-		if(tempValuesFloat[1] > 50){
-			acuState |= 0b100000;
-		}
-		if(tempValuesFloat[2] > 50){
-			acuState |= 0b10;
-			acuState |= 0b100000;
-		}
-		if(tempValuesFloat[3] > 50){
-			acuState |= 0b100;
-			acuState |= 0b100000;
-		}
-		if(tempValuesFloat[4] > 50){
-			acuState |= 0b110;
-			acuState |= 0b100000;
-		}
 		timerCounter_2++;
 	}
 	
 	if(tempValuesFloat[1] <= 50 && tempValuesFloat[2] <= 50 && tempValuesFloat[3] <= 50 && tempValuesFloat[4] <= 50){
+		acuState = 0;
 		timerCounter_2 = 0;
 	}
 	
-	if((tempValuesFloat[1] <= 40 && tempValuesFloat[2] <= 40 && tempValuesFloat[3] <= 40 && tempValuesFloat[4] <= 40) && ((cellValues[0] >= 36000 && cellValues[0] <= 41300) && (cellValues[1] >= 36000 && cellValues[1] <= 41300) && (cellValues[3] >= 36000 && cellValues[3] <= 41300) && (cellValues[4] >= 36000 && cellValues[4] <= 41300))){
+	if(timerCounter_3>3000 && (tempValuesFloat[1] <= 40 && tempValuesFloat[2] <= 40 && tempValuesFloat[3] <= 40 && tempValuesFloat[4] <= 40) && ((cellValues[0] >= 36000 && cellValues[0] <= 41300) && (cellValues[1] >= 36000 && cellValues[1] <= 41300) && (cellValues[3] >= 36000 && cellValues[3] <= 41300) && (cellValues[4] >= 36000 && cellValues[4] <= 41300))){
 		acuState = 0;
 		PORTE |= 1 << DDE2;
 	}
 	
+	if(timerCounter >= 479){
+		if((cellValues[0] < 35000 || cellValues[0] > 42300)){
+			if(cellValues[0] < 35000){
+				acuState = 0b1001;
+				}else{
+				acuState = 0b10001;
+			}
+		}
+		if((cellValues[1] < 35000 || cellValues[1] > 42300)){
+			if(cellValues[1] < 35000){
+				acuState = 0b1011;
+				}else{
+				acuState |= 0b10011;
+			}
+		}
+		if((cellValues[2] < 35000 || cellValues[2] > 42300)){
+			if(cellValues[2] < 35000){
+				acuState |= 0b1101;
+				}else{
+				acuState |= 0b10101;
+			}
+		}
+		if((cellValues[3] < 35000 || cellValues[3] > 42300)){
+			if(cellValues[3] < 35000){
+				acuState |= 0b1111;
+				}else{
+				acuState |= 0b10111;
+			}
+		}
+	}
+	
 	if(timerCounter >= 500){
 		PORTE = 0 << DDE2;
+	}
+	
+	if(timerCounter_2 >= 479){
+	if(tempValuesFloat[1] > 50){
+		acuState = 0b100001;
+	}
+	if(tempValuesFloat[2] > 50){
+		acuState |= 0b100011;
+	}
+	if(tempValuesFloat[3] > 50){
+		acuState |= 0b100101;
+	}
+	if(tempValuesFloat[4] > 50){
+		acuState |= 0b100111;
+	}
 	}
 	
 	if(timerCounter_2 >= 500){
@@ -508,9 +507,11 @@ int main(void)
 	
 	can_init(BITRATE_500_KBPS);
 	can_set_filter(1, &filtersetup);
+	PORTE &= 0 << DDE2; //power in car is disabled -> will be enabled 3sec after program launch
 	
     while (1) 
     {
+			//should "if" with "PORTE DDE2" be here?
 			LTC_StartCellADC();
 			d_ms(20);
 			LTC_GetValuesADC();
@@ -525,14 +526,16 @@ int main(void)
 				
 				txMessage.id = 0x0B;
 				txMessage.flags.rtr = 0;
-				txMessage.length = 6;
+				txMessage.length = 8;
 				
 				txMessage.data[0] = cellValuesSum;
 				txMessage.data[1] = acuState;
 				txMessage.data[2] = tempValuesAvr;
 				txMessage.data[3] = tempValuesHigh;
-				txMessage.data[4] = cellValuesLow;
-				txMessage.data[5] = cellValuesHigh;
+				txMessage.data[4] = cellValues[0];
+				txMessage.data[5] = cellValues[1];
+				txMessage.data[6] = cellValues[3];
+				txMessage.data[7] = cellValues[4];
 				
 				can_send_message(&txMessage);
 			}
