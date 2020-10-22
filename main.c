@@ -95,7 +95,7 @@ ISR(TIMER0_COMP_vect)
 		timerCounter_2 = 0;
 	}
 	
-	if(timerCounter_3>3000 && (tempValuesFloat[1] <= 40 && tempValuesFloat[2] <= 40 && tempValuesFloat[3] <= 40 && tempValuesFloat[4] <= 40) && ((cellValues[0] >= 36000 && cellValues[0] <= 41300) && (cellValues[1] >= 36000 && cellValues[1] <= 41300) && (cellValues[3] >= 36000 && cellValues[3] <= 41300) && (cellValues[4] >= 36000 && cellValues[4] <= 41300))){
+	if(timerCounter_3>3000 && (tempValuesFloat[1] <= 40 && tempValuesFloat[2] <= 40 && tempValuesFloat[3] <= 40 && tempValuesFloat[4] <= 40) && ((cellValues[0] >= 36000 && cellValues[0] <= 42300) && (cellValues[1] >= 36000 && cellValues[1] <= 42300) && (cellValues[3] >= 36000 && cellValues[3] <= 42300) && (cellValues[4] >= 36000 && cellValues[4] <= 42300))){
 		acuState = 0;
 		PORTE |= 1 << DDE2;
 	}
