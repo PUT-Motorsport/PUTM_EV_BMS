@@ -1,5 +1,5 @@
 /*
- * bms_1.c
+ * PUT MOTORSPORT BMS LV 2020
  *
  * Author : Maksymilian Jaruga
  */ 
@@ -64,14 +64,19 @@ uint16_t tempValuesAvr;
 uint16_t tempValuesHigh;
 uint16_t reference2_value;
 uint16_t reference2_value_2;
-uint8_t canFlag=0;
+uint8_t canFlag = 0;
+uint8_t fuckFlag = 0;
 float tempValuesFloat[10];
 
 ISR(TIMER0_COMP_vect)
 {
 	TCNT0 = 0;
 	
-	timerCounter_3++;
+	
+	
+	if((tempValuesFloat[1] <= 40 && tempValuesFloat[2] <= 40 && tempValuesFloat[3] <= 40 && tempValuesFloat[4] <= 40) && ((cellValues[0] >= 36000 && cellValues[0] <= 42300) && (cellValues[1] >= 36000 && cellValues[1] <= 42300) && (cellValues[3] >= 36000 && cellValues[3] <= 42300) && (cellValues[4] >= 36000 && cellValues[4] <= 42300))){
+		timerCounter_3++;
+	}
 	if((timerCounter_3%20)==0){
 		canFlag=1;
 	}
@@ -132,6 +137,10 @@ ISR(TIMER0_COMP_vect)
 	}
 	
 	if(timerCounter >= 500){
+		PORTB |= 1 << DDB5;
+		timerCounter_3 = 0;
+		fuckFlag++;
+		timerCounter = 0;
 		PORTE = 0 << DDE2;
 	}
 	
@@ -151,6 +160,10 @@ ISR(TIMER0_COMP_vect)
 	}
 	
 	if(timerCounter_2 >= 500){
+		PORTB |= 1 << DDB6;
+		timerCounter_3 = 0;
+		fuckFlag++;
+		timerCounter_2 = 0;
 		PORTE = 0 << DDE2;
 	}
 	
@@ -538,6 +551,11 @@ int main(void)
 				txMessage.data[7] = cellValues[4]/1000;
 				
 				can_send_message(&txMessage);
+			}
+			
+			if(fuckFlag >= 5){
+			PORTE = 0 << DDE2;
+			//timerCounter_3 = 0;
 			}
     }
 }
